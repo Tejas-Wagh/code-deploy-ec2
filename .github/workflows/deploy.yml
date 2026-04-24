@@ -8,28 +8,31 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      IMAGE_NAME: fastapi-app
+
     steps:
-      # 📥 Checkout code
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 🐳 Set up Docker Buildx (fixes build issues)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 🐳 Login to Docker Hub
+      # ✅ Clean username (IMPORTANT FIX)
+      - name: Prepare Docker username
+        run: |
+          echo "DOCKER_USER=$(echo '${{ secrets.DOCKER_USERNAME }}' | tr -d '\n' | xargs)" >> $GITHUB_ENV
+
       - name: Login to Docker Hub
         run: |
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login \
-            -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+            -u "$DOCKER_USER" --password-stdin
 
-      # 🐳 Build & Push Image (FIXED)
       - name: Build and Push Docker Image
         run: |
-          docker build -t "${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest" .
-          docker push "${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest"
+          docker build -t "$DOCKER_USER/$IMAGE_NAME:latest" .
+          docker push "$DOCKER_USER/$IMAGE_NAME:latest"
 
-      # 🚀 Deploy on EC2
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -37,7 +40,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
           script: |
-            docker pull ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
+            docker pull $DOCKER_USER/$IMAGE_NAME:latest
 
             docker stop fastapi-app || true
             docker rm fastapi-app || true
@@ -45,4 +48,4 @@ jobs:
             docker run -d -p 8000:8000 \
               --restart always \
               --name fastapi-app \
-              ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
+              $DOCKER_USER/$IMAGE_NAME:latest
